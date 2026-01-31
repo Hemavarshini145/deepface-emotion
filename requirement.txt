@@ -1,0 +1,29 @@
+This project requires the following Python packages:
+
+deepface – Face recognition and emotion detection using pre-trained models.
+
+tensorflow – Core machine learning framework for running neural networks.
+
+keras – High-level neural network API built on TensorFlow.
+
+retina-face – Fast and accurate face detection for locating faces in images/video.
+
+opencv-python – Image/video processing and webcam capture.
+
+flask – Lightweight web framework (optional for web deployment).
+
+flask-cors – Handles Cross-Origin Resource Sharing in Flask apps.
+
+gdown – Downloads files from Google Drive (e.g., pre-trained models).
+
+pandas – Data manipulation and storage for results.
+
+rich – Pretty console output: colors, tables, and progress bars.
+
+lightdsa – Utility library used internally for cryptography operations.
+
+lightecc – Elliptic curve cryptography operations for DeepFace.
+
+lightphe – Privacy-preserving encryption techniques.
+
+astunparse – Converts Python AST back to readable code (used by TensorFlow).
