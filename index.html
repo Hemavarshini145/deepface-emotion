@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EmotiScan — Real-Time Emotion Detection</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0a0a0f; --surface: #111118; --surface2: #1a1a26;
+      --border: rgba(255,255,255,0.07); --border2: rgba(255,255,255,0.14);
+      --text: #f0f0f8; --muted: #8888aa; --accent: #7c6af7; --accent2: #a78bfa;
+      --glow: rgba(124,106,247,0.18);
+      --happy: #34d399; --sad: #60a5fa; --angry: #f87171;
+      --surprised: #fbbf24; --neutral: #a78bfa; --fearful: #fb923c; --disgusted: #4ade80;
+    }
+    body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; min-height: 100vh; overflow-x: hidden; }
+    body::before {
+      content: ''; position: fixed; inset: 0;
+      background-image: linear-gradient(rgba(124,106,247,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(124,106,247,0.04) 1px, transparent 1px);
+      background-size: 40px 40px; pointer-events: none; z-index: 0;
+    }
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+    /* NAV */
+    nav {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 40px; border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(12px); position: sticky; top: 0; z-index: 100;
+      background: rgba(10,10,15,0.85);
+    }
+    .nav-logo { font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+    .logo-dot {
+      width: 10px; height: 10px; border-radius: 50%; background: var(--accent);
+      box-shadow: 0 0 12px var(--accent); animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.6;transform:scale(0.85)} }
+    .nav-links { display: flex; gap: 28px; }
+    .nav-links a { color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500; transition: color 0.2s; }
+    .nav-links a:hover { color: var(--text); }
+    .nav-badge { background: var(--glow); border: 1px solid var(--accent); color: var(--accent2); font-size: 12px; padding: 4px 12px; border-radius: 20px; }
+
+    /* HERO */
+    .hero { text-align: center; padding: 90px 24px 60px; }
+    .hero-tag {
+      display: inline-block; background: var(--glow); border: 1px solid rgba(124,106,247,0.3);
+      color: var(--accent2); font-size: 12px; padding: 6px 16px; border-radius: 20px;
+      margin-bottom: 28px; text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .hero h1 {
+      font-size: clamp(36px,6vw,72px); font-weight: 700; letter-spacing: -2px; line-height: 1.05;
+      background: linear-gradient(135deg,#f0f0f8 0%,var(--accent2) 60%,var(--accent) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; margin-bottom: 20px;
+    }
+    .hero p { max-width: 520px; margin: 0 auto 40px; color: var(--muted); font-size: 17px; line-height: 1.7; }
+    .hero-btns { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+    .btn-primary {
+      background: var(--accent); color: #fff; padding: 13px 28px; border-radius: 10px;
+      font-size: 15px; font-weight: 600; border: none; cursor: pointer; font-family: inherit;
+      transition: all 0.2s; box-shadow: 0 0 24px rgba(124,106,247,0.35);
+    }
+    .btn-primary:hover { background: var(--accent2); transform: translateY(-1px); }
+    .btn-secondary {
+      background: var(--surface2); color: var(--text); padding: 13px 28px; border-radius: 10px;
+      font-size: 15px; font-weight: 500; border: 1px solid var(--border2); cursor: pointer; font-family: inherit; transition: all 0.2s;
+    }
+    .btn-secondary:hover { border-color: var(--accent); color: var(--accent2); }
+
+    /* DETECTOR */
+    .detector-section { padding: 40px 24px 80px; }
+    .section-title { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 32px; text-align: center; }
+    .detector-grid { display: grid; grid-template-columns: 1fr 320px; gap: 24px; align-items: start; }
+
+    /* Camera */
+    .camera-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; position: relative; }
+    .camera-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+    .camera-title { font-size: 13px; font-weight: 600; color: var(--muted); }
+    .status-indicator { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #444; transition: background 0.3s; }
+    .status-dot.active { background: #34d399; box-shadow: 0 0 8px #34d399; animation: pulse 1.5s infinite; }
+    .status-dot.processing { background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: pulse 0.8s infinite; }
+    .camera-body { position: relative; background: #05050a; aspect-ratio: 4/3; display: flex; align-items: center; justify-content: center; }
+    #video-feed { width: 100%; height: 100%; object-fit: cover; display: block; }
+    #canvas-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+    .camera-placeholder { display: flex; flex-direction: column; align-items: center; gap: 12px; color: var(--muted); }
+    .cam-icon { width: 56px; height: 56px; border-radius: 14px; background: var(--surface2); display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); font-size: 28px; }
+    .camera-controls { display: flex; gap: 10px; padding: 14px 18px; border-top: 1px solid var(--border); }
+    .ctrl-btn { flex: 1; padding: 10px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; border: none; transition: all 0.2s; }
+    #start-btn { background: var(--accent); color: #fff; }
+    #start-btn:hover { background: var(--accent2); }
+    #start-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    #stop-btn { background: var(--surface2); color: var(--muted); border: 1px solid var(--border2); }
+    #stop-btn:hover:not(:disabled) { border-color: #f87171; color: #f87171; }
+    #stop-btn:disabled, #snapshot-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    #snapshot-btn { background: var(--surface2); color: var(--muted); border: 1px solid var(--border2); }
+    #snapshot-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent2); }
+
+    /* Right panel */
+    .right-panel { display: flex; flex-direction: column; gap: 16px; }
+    .panel-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px; }
+    .panel-card-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 14px; }
+    .emotion-display { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+    .emotion-emoji { font-size: 44px; line-height: 1; transition: all 0.3s; }
+    .emotion-name { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; transition: color 0.3s; margin-bottom: 2px; }
+    .emotion-conf { font-size: 13px; color: var(--muted); }
+    .emotion-bars { display: flex; flex-direction: column; gap: 8px; }
+    .bar-row { display: flex; align-items: center; gap: 8px; }
+    .bar-label { font-size: 12px; color: var(--muted); width: 64px; }
+    .bar-track { flex: 1; height: 5px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 3px; transition: width 0.35s cubic-bezier(0.4,0,0.2,1); }
+    .bar-val { font-size: 11px; color: var(--muted); width: 32px; text-align: right; }
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .stat-item { background: var(--surface2); border-radius: 10px; padding: 12px; text-align: center; }
+    .stat-val { font-size: 22px; font-weight: 700; color: var(--accent2); }
+    .stat-key { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .history-list { display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto; }
+    .history-list::-webkit-scrollbar { width: 3px; }
+    .history-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+    .history-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: var(--surface2); border-radius: 8px; font-size: 13px; animation: slideIn 0.25s ease; }
+    @keyframes slideIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:none} }
+    .history-emoji { font-size: 18px; }
+    .history-label { flex: 1; font-weight: 500; }
+    .history-time { font-size: 11px; color: var(--muted); }
+
+    /* How it works */
+    .how-section { padding: 60px 24px; border-top: 1px solid var(--border); }
+    .how-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 16px; margin-top: 32px; }
+    .how-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 22px; }
+    .how-num { font-size: 11px; color: var(--accent); margin-bottom: 12px; }
+    .how-card h3 { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+    .how-card p { font-size: 14px; color: var(--muted); line-height: 1.6; }
+
+    /* Tech stack */
+    .tech-section { padding: 40px 24px 80px; border-top: 1px solid var(--border); }
+    .tech-pills { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+    .tech-pill { background: var(--surface2); border: 1px solid var(--border2); border-radius: 8px; padding: 8px 16px; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+    .tech-pill span { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+
+    /* Toast */
+    #toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--border2); color: var(--text); padding: 12px 22px; border-radius: 10px; font-size: 14px; z-index: 999; opacity: 0; pointer-events: none; transition: opacity 0.3s; box-shadow: 0 4px 30px rgba(0,0,0,0.5); }
+    #toast.show { opacity: 1; }
+
+    /* Modal */
+    #snapshot-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 200; opacity: 0; pointer-events: none; transition: opacity 0.25s; }
+    #snapshot-modal.show { opacity: 1; pointer-events: all; }
+    .modal-inner { background: var(--surface); border: 1px solid var(--border2); border-radius: 16px; padding: 24px; max-width: 480px; width: 90%; }
+    .modal-inner canvas { width: 100%; border-radius: 10px; display: block; margin-bottom: 16px; }
+    .modal-row { display: flex; gap: 10px; }
+    .modal-row button { flex: 1; padding: 10px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; border: none; }
+    #download-btn { background: var(--accent); color: #fff; }
+    #close-modal-btn { background: var(--surface2); color: var(--muted); border: 1px solid var(--border2); }
+
+    @media (max-width: 780px) {
+      nav { padding: 16px 20px; } .nav-links { display: none; }
+      .detector-grid { grid-template-columns: 1fr; }
+      .right-panel { flex-direction: row; flex-wrap: wrap; }
+      .right-panel .panel-card { flex: 1; min-width: 260px; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-logo"><div class="logo-dot"></div>EmotiScan</div>
+  <div class="nav-links">
+    <a href="#detector">Detector</a>
+    <a href="#how">How it works</a>
+    <a href="#tech">Tech stack</a>
+    <a href="https://github.com/Hemavarshini145/deepface-emotion" target="_blank">GitHub ↗</a>
+  </div>
+  <div class="nav-badge">DeepFace + TensorFlow</div>
+</nav>
+
+<section class="hero">
+  <div class="hero-tag">✦ Final Year Project — Real-Time AI</div>
+  <h1>Read Emotions<br/>in Real Time</h1>
+  <p>Powered by DeepFace and deep learning — detects happy, sad, angry, surprised, fearful, disgusted, and neutral from your webcam instantly.</p>
+  <div class="hero-btns">
+    <button class="btn-primary" onclick="document.getElementById('detector').scrollIntoView({behavior:'smooth'})">Try it now →</button>
+    <button class="btn-secondary" onclick="window.open('https://github.com/Hemavarshini145/deepface-emotion','_blank')">View on GitHub</button>
+  </div>
+</section>
+
+<section class="detector-section" id="detector">
+  <div class="container">
+    <div class="section-title">// live detection</div>
+    <div class="detector-grid">
+      <div class="camera-panel">
+        <div class="camera-header">
+          <span class="camera-title">webcam feed</span>
+          <div class="status-indicator">
+            <div class="status-dot" id="status-dot"></div>
+            <span id="status-text">idle</span>
+          </div>
+        </div>
+        <div class="camera-body">
+          <div class="camera-placeholder" id="placeholder">
+            <div class="cam-icon">📷</div>
+            <p>Click <strong>Start Camera</strong> to begin</p>
+          </div>
+          <video id="video-feed" autoplay muted playsinline style="display:none;"></video>
+          <canvas id="canvas-overlay"></canvas>
+        </div>
+        <div class="camera-controls">
+          <button class="ctrl-btn" id="start-btn" onclick="startCamera()">Start Camera</button>
+          <button class="ctrl-btn" id="stop-btn" onclick="stopCamera()" disabled>Stop</button>
+          <button class="ctrl-btn" id="snapshot-btn" onclick="takeSnapshot()" disabled>📸 Snap</button>
+        </div>
+      </div>
+
+      <div class="right-panel">
+        <div class="panel-card">
+          <div class="panel-card-title">current emotion</div>
+          <div class="emotion-display">
+            <div class="emotion-emoji" id="emotion-emoji">😶</div>
+            <div class="emotion-info">
+              <div class="emotion-name" id="emotion-name" style="color:var(--muted)">—</div>
+              <div class="emotion-conf" id="emotion-conf">confidence: —</div>
+            </div>
+          </div>
+          <div class="emotion-bars" id="emotion-bars"></div>
+        </div>
+
+        <div class="panel-card">
+          <div class="panel-card-title">session stats</div>
+          <div class="stats-grid">
+            <div class="stat-item"><div class="stat-val" id="stat-frames">0</div><div class="stat-key">frames</div></div>
+            <div class="stat-item"><div class="stat-val" id="stat-detections">0</div><div class="stat-key">detections</div></div>
+            <div class="stat-item"><div class="stat-val" id="stat-dominant">—</div><div class="stat-key">dominant</div></div>
+            <div class="stat-item"><div class="stat-val" id="stat-fps">—</div><div class="stat-key">fps</div></div>
+          </div>
+        </div>
+
+        <div class="panel-card">
+          <div class="panel-card-title">detection log</div>
+          <div class="history-list" id="history-list">
+            <div style="color:var(--muted);font-size:13px;text-align:center;padding:20px 0;">No detections yet</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="how-section" id="how">
+  <div class="container">
+    <div class="section-title">// how it works</div>
+    <div class="how-grid">
+      <div class="how-card"><div class="how-num">01 —</div><h3>Frame Capture</h3><p>OpenCV captures live video frames from your webcam at high speed, feeding them into the analysis pipeline.</p></div>
+      <div class="how-card"><div class="how-num">02 —</div><h3>Face Detection</h3><p>DeepFace locates faces in each frame using a robust detection model, identifying bounding box coordinates.</p></div>
+      <div class="how-card"><div class="how-num">03 —</div><h3>Emotion Analysis</h3><p>The cropped face region is passed through a deep learning model that outputs probability scores for 7 emotions.</p></div>
+      <div class="how-card"><div class="how-num">04 —</div><h3>Flask API Response</h3><p>Results are served via a Flask REST endpoint — this frontend polls it and renders emotion data in real time.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="tech-section" id="tech">
+  <div class="container">
+    <div class="section-title">// tech stack</div>
+    <div class="tech-pills">
+      <div class="tech-pill"><span style="background:#f87171"></span>Python 3.x</div>
+      <div class="tech-pill"><span style="background:#60a5fa"></span>DeepFace</div>
+      <div class="tech-pill"><span style="background:#fbbf24"></span>TensorFlow / Keras</div>
+      <div class="tech-pill"><span style="background:#34d399"></span>OpenCV</div>
+      <div class="tech-pill"><span style="background:#a78bfa"></span>Flask</div>
+      <div class="tech-pill"><span style="background:#fb923c"></span>NumPy</div>
+      <div class="tech-pill"><span style="background:#7c6af7"></span>JavaScript</div>
+      <div class="tech-pill"><span style="background:#e879f9"></span>HTML5 / CSS3</div>
+    </div>
+  </div>
+</section>
+
+<div id="toast"></div>
+<div id="snapshot-modal">
+  <div class="modal-inner">
+    <canvas id="snap-canvas"></canvas>
+    <div class="modal-row">
+      <button id="download-btn" onclick="downloadSnapshot()">⬇ Download</button>
+      <button id="close-modal-btn" onclick="closeModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const EMOTIONS = {
+  happy:     { emoji:'😄', color:'#34d399' },
+  sad:       { emoji:'😢', color:'#60a5fa' },
+  angry:     { emoji:'😠', color:'#f87171' },
+  surprised: { emoji:'😲', color:'#fbbf24' },
+  neutral:   { emoji:'😐', color:'#a78bfa' },
+  fearful:   { emoji:'😨', color:'#fb923c' },
+  disgusted: { emoji:'🤢', color:'#4ade80' },
+};
+
+const FLASK_URL = 'http://127.0.0.1:5000'; // Change if your Flask runs elsewhere
+
+let stream=null, rafId=null, analysisInterval=null;
+let frameCount=0, detectionCount=0, emotionTally={}, history=[];
+let lastFrameTime=performance.now();
+
+const video=document.getElementById('video-feed');
+const canvas=document.getElementById('canvas-overlay');
+const ctx=canvas.getContext('2d');
+const placeholder=document.getElementById('placeholder');
+const statusDot=document.getElementById('status-dot');
+const statusText=document.getElementById('status-text');
+const emojiEl=document.getElementById('emotion-emoji');
+const nameEl=document.getElementById('emotion-name');
+const confEl=document.getElementById('emotion-conf');
+const barsEl=document.getElementById('emotion-bars');
+const historyEl=document.getElementById('history-list');
+const startBtn=document.getElementById('start-btn');
+const stopBtn=document.getElementById('stop-btn');
+const snapBtn=document.getElementById('snapshot-btn');
+
+function initBars(){
+  barsEl.innerHTML=Object.entries(EMOTIONS).map(([key,v])=>`
+    <div class="bar-row">
+      <span class="bar-label">${key}</span>
+      <div class="bar-track"><div class="bar-fill" id="bar-${key}" style="width:0%;background:${v.color}"></div></div>
+      <span class="bar-val" id="val-${key}">0%</span>
+    </div>`).join('');
+}
+initBars();
+
+async function startCamera(){
+  try {
+    stream=await navigator.mediaDevices.getUserMedia({video:{width:640,height:480,facingMode:'user'}});
+    video.srcObject=stream;
+    video.style.display='block';
+    placeholder.style.display='none';
+    startBtn.disabled=true; stopBtn.disabled=false; snapBtn.disabled=false;
+    setStatus('active','live');
+    frameCount=0; detectionCount=0; emotionTally={};
+    renderLoop();
+    analysisInterval=setInterval(fetchEmotion,500);
+    toast('Camera started — detecting emotions…');
+  } catch(e){
+    toast('Camera blocked — running demo mode');
+    startDemoMode();
+  }
+}
+
+function stopCamera(){
+  if(stream) stream.getTracks().forEach(t=>t.stop());
+  if(rafId) cancelAnimationFrame(rafId);
+  if(analysisInterval) clearInterval(analysisInterval);
+  video.style.display='none';
+  placeholder.style.display='flex';
+  placeholder.innerHTML='<div class="cam-icon">📷</div><p>Click <strong>Start Camera</strong> to begin</p>';
+  startBtn.disabled=false; stopBtn.disabled=true; snapBtn.disabled=true;
+  setStatus('idle','idle');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  toast('Camera stopped.');
+}
+
+function renderLoop(){
+  const now=performance.now();
+  document.getElementById('stat-fps').textContent=Math.round(1000/(now-lastFrameTime));
+  lastFrameTime=now;
+  document.getElementById('stat-frames').textContent=frameCount++;
+  rafId=requestAnimationFrame(renderLoop);
+}
+
+async function fetchEmotion(){
+  try {
+    setStatus('processing','analyzing…');
+    const res=await fetch(`${FLASK_URL}/emotion`);
+    if(!res.ok) throw new Error();
+    applyResult(await res.json());
+    setStatus('active','live');
+  } catch(e){
+    setStatus('active','demo mode');
+    applyResult(generateMockEmotion());
+  }
+}
+
+function applyResult(data){
+  const dom=(data.dominant||'neutral').toLowerCase();
+  const conf=Math.round((data.confidence||Math.random())*100);
+  const scores=data.scores||generateScoresFor(dom);
+  const meta=EMOTIONS[dom]||EMOTIONS.neutral;
+
+  emojiEl.textContent=meta.emoji;
+  nameEl.textContent=dom;
+  nameEl.style.color=meta.color;
+  confEl.textContent=`confidence: ${conf}%`;
+
+  Object.keys(EMOTIONS).forEach(key=>{
+    const pct=Math.round((scores[key]||0)*100);
+    const bar=document.getElementById('bar-'+key);
+    const val=document.getElementById('val-'+key);
+    if(bar) bar.style.width=pct+'%';
+    if(val) val.textContent=pct+'%';
+  });
+
+  detectionCount++;
+  emotionTally[dom]=(emotionTally[dom]||0)+1;
+  const top=Object.entries(emotionTally).sort((a,b)=>b[1]-a[1])[0];
+  document.getElementById('stat-detections').textContent=detectionCount;
+  document.getElementById('stat-dominant').textContent=top?top[0].slice(0,5):'—';
+  addHistory(dom,meta.emoji,conf);
+  if(data.box) drawBox(data.box,dom,meta.color);
+}
+
+function addHistory(emotion,emoji,conf){
+  const now=new Date();
+  const time=`${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
+  history.unshift({emotion,emoji,conf,time});
+  if(history.length>30) history.pop();
+  historyEl.innerHTML=history.slice(0,8).map(h=>`
+    <div class="history-item">
+      <span class="history-emoji">${h.emoji}</span>
+      <span class="history-label">${h.emotion}</span>
+      <span class="history-time">${h.conf}% · ${h.time}</span>
+    </div>`).join('');
+}
+
+function drawBox(box,emotion,color){
+  const scaleX=canvas.width/640, scaleY=canvas.height/480;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.strokeStyle=color; ctx.lineWidth=2;
+  ctx.shadowColor=color; ctx.shadowBlur=14;
+  ctx.strokeRect(box.x*scaleX,box.y*scaleY,box.w*scaleX,box.h*scaleY);
+  ctx.shadowBlur=0; ctx.fillStyle=color;
+  ctx.font='bold 12px sans-serif';
+  ctx.fillText(emotion,box.x*scaleX+4,box.y*scaleY-8);
+}
+
+function setStatus(state,text){ statusDot.className='status-dot '+state; statusText.textContent=text; }
+
+function startDemoMode(){
+  placeholder.innerHTML='<p style="color:#a78bfa;font-size:14px">🎭 Demo mode — Flask not connected</p>';
+  startBtn.disabled=true; stopBtn.disabled=false; snapBtn.disabled=false;
+  setStatus('active','demo');
+  analysisInterval=setInterval(()=>applyResult(generateMockEmotion()),1200);
+  stopBtn.onclick=()=>{ clearInterval(analysisInterval); stopCamera(); stopBtn.onclick=stopCamera; };
+}
+
+function generateMockEmotion(){
+  const keys=Object.keys(EMOTIONS);
+  const dom=keys[Math.floor(Math.random()*keys.length)];
+  return {dominant:dom,confidence:0.55+Math.random()*0.44,scores:generateScoresFor(dom)};
+}
+
+function generateScoresFor(dom){
+  const keys=Object.keys(EMOTIONS);
+  let raw={}; keys.forEach(k=>raw[k]=Math.random()*0.1);
+  raw[dom]=0.55+Math.random()*0.44;
+  const total=Object.values(raw).reduce((a,b)=>a+b,0);
+  let out={}; keys.forEach(k=>out[k]=raw[k]/total);
+  return out;
+}
+
+const snapCanvas=document.getElementById('snap-canvas');
+const snapCtx=snapCanvas.getContext('2d');
+function takeSnapshot(){
+  snapCanvas.width=video.videoWidth||640; snapCanvas.height=video.videoHeight||480;
+  if(video.srcObject){ snapCtx.drawImage(video,0,0); }
+  else {
+    snapCtx.fillStyle='#111118'; snapCtx.fillRect(0,0,snapCanvas.width,snapCanvas.height);
+    snapCtx.fillStyle='#fff'; snapCtx.font='24px sans-serif'; snapCtx.textAlign='center';
+    snapCtx.fillText('Emotion: '+nameEl.textContent,snapCanvas.width/2,snapCanvas.height/2);
+  }
+  document.getElementById('snapshot-modal').classList.add('show');
+}
+function closeModal(){ document.getElementById('snapshot-modal').classList.remove('show'); }
+function downloadSnapshot(){
+  const a=document.createElement('a'); a.href=snapCanvas.toDataURL('image/png');
+  a.download=`emotiscan_${Date.now()}.png`; a.click(); closeModal();
+}
+
+function resizeCanvas(){ const b=video.parentElement; canvas.width=b.offsetWidth; canvas.height=b.offsetHeight; }
+window.addEventListener('resize',resizeCanvas); resizeCanvas();
+
+function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),3000); }
+</script>
+</body>
+</html>
